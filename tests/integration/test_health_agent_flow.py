@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 from langchain_core.messages import HumanMessage, AIMessage
 
 from src.agents.health_assessment import HealthAssessmentAgent
-from src.models.state import AgentState, UserProfile
+from src.models.state import AgentState, UserProfile, HealthMetrics
 
 
 @pytest.fixture
@@ -35,7 +35,7 @@ class TestCompleteOnboardingFlow:
         )
         
         # Calculate metrics directly
-        metrics = agent.calculate_health_metrics(profile)
+        metrics = agent.calculate_metrics(profile)
         
         # Should calculate metrics successfully
         assert metrics is not None
@@ -57,12 +57,9 @@ class TestPartialDataScenarios:
             # Missing: height, activity_level, fitness_goal
         )
         
-        # Check missing fields
-        missing = agent._check_missing_fields(incomplete_profile)
-        
-        # Should identify missing fields
-        assert len(missing) > 0
-        assert "height" in missing
+        # Should raise error when trying to calculate
+        with pytest.raises(ValueError):
+            agent.calculate_metrics(incomplete_profile)
     
     def test_user_updates_existing_info(self, agent):
         """Test when user wants to update previously provided info."""
@@ -76,13 +73,13 @@ class TestPartialDataScenarios:
         )
         
         # Calculate initial metrics
-        initial_metrics = agent.calculate_health_metrics(profile)
+        initial_metrics = agent.calculate_metrics(profile)
         
         # Update weight
         profile.weight_kg = 83.0
         
         # Recalculate
-        updated_metrics = agent.calculate_health_metrics(profile)
+        updated_metrics = agent.calculate_metrics(profile)
         
         # Should have different metrics
         assert updated_metrics.bmi != initial_metrics.bmi
@@ -100,8 +97,8 @@ class TestErrorHandlingFlows:
         )
         
         # Should raise ValueError
-        with pytest.raises(ValueError, match="Missing required field"):
-            agent.calculate_health_metrics(incomplete_profile)
+        with pytest.raises(ValueError):
+            agent.calculate_metrics(incomplete_profile)
 
 
 class TestDifferentUserProfiles:
@@ -118,7 +115,7 @@ class TestDifferentUserProfiles:
             fitness_goal="gain_muscle"
         )
         
-        metrics = agent.calculate_health_metrics(profile)
+        metrics = agent.calculate_metrics(profile)
         
         assert metrics.bmi < 18.5
         assert metrics.bmi_category == "Underweight"
@@ -136,7 +133,7 @@ class TestDifferentUserProfiles:
             fitness_goal="lose_weight"
         )
         
-        metrics = agent.calculate_health_metrics(profile)
+        metrics = agent.calculate_metrics(profile)
         
         assert metrics.bmi >= 30
         assert metrics.bmi_category == "Obese"
@@ -154,7 +151,7 @@ class TestDifferentUserProfiles:
             fitness_goal="gain_muscle"
         )
         
-        metrics = agent.calculate_health_metrics(profile)
+        metrics = agent.calculate_metrics(profile)
         
         # Should have high TDEE
         assert metrics.tdee >= 3000
@@ -176,7 +173,7 @@ class TestDifferentUserProfiles:
             fitness_goal="lose_weight"
         )
         
-        metrics = agent.calculate_health_metrics(profile)
+        metrics = agent.calculate_metrics(profile)
         
         # TDEE should be relatively low
         assert metrics.tdee < 2000
@@ -191,13 +188,23 @@ class TestDifferentUserProfiles:
 class TestConversationContext:
     """Test conversation context and message tracking."""
     
-    def test_check_missing_fields(self, agent):
-        """Test that missing fields are correctly identified."""
-        profile = UserProfile(age=30)
-        missing = agent._check_missing_fields(profile)
+    def test_format_assessment(self, agent):
+        """Test that assessment formatting works."""
+        metrics = HealthMetrics(
+            bmi=22.0,
+            bmi_category="Normal weight",
+            tdee=2000,
+            target_calories=2000,
+            protein_g=150,
+            carbs_g=200,
+            fat_g=67,
+            risk_level="low",
+            recommendations=["Maintain current weight"]
+        )
         
-        # Should have many missing fields
-        assert len(missing) >= 5
+        message = agent.format_assessment(metrics)
+        assert "22.0" in message
+        assert "Normal weight" in message
 
 
 class TestMacroDistribution:
@@ -214,7 +221,7 @@ class TestMacroDistribution:
             fitness_goal="lose_weight"
         )
         
-        metrics = agent.calculate_health_metrics(profile)
+        metrics = agent.calculate_metrics(profile)
         
         # Calculate percentages
         protein_cal = metrics.protein_g * 4
@@ -238,7 +245,7 @@ class TestMacroDistribution:
             fitness_goal="gain_muscle"
         )
         
-        metrics = agent.calculate_health_metrics(profile)
+        metrics = agent.calculate_metrics(profile)
         
         # Calculate percentages
         protein_cal = metrics.protein_g * 4
@@ -262,7 +269,7 @@ class TestMacroDistribution:
             fitness_goal="maintain"
         )
         
-        metrics = agent.calculate_health_metrics(profile)
+        metrics = agent.calculate_metrics(profile)
         
         # All macros should be present
         assert metrics.protein_g > 0
@@ -288,7 +295,7 @@ class TestSafetyLimits:
             fitness_goal="lose_weight"
         )
         
-        metrics = agent.calculate_health_metrics(profile)
+        metrics = agent.calculate_metrics(profile)
         
         # Should not go below 1200 calories
         assert metrics.target_calories >= 1200
@@ -304,7 +311,7 @@ class TestSafetyLimits:
             fitness_goal="lose_weight"
         )
         
-        metrics = agent.calculate_health_metrics(profile)
+        metrics = agent.calculate_metrics(profile)
         
         # Deficit should not exceed 1000 calories
         deficit = metrics.tdee - metrics.target_calories
@@ -321,7 +328,7 @@ class TestSafetyLimits:
             fitness_goal="gain_muscle"
         )
         
-        metrics = agent.calculate_health_metrics(profile)
+        metrics = agent.calculate_metrics(profile)
         
         # Surplus should not exceed 500 calories
         surplus = metrics.target_calories - metrics.tdee

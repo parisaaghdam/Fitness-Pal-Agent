@@ -17,7 +17,7 @@ todos:
       - foundation-setup
   - id: health-agent
     content: Build Health Assessment Agent with full test coverage
-    status: pending
+    status: completed
     dependencies:
       - calculations-utils
       - state-database
