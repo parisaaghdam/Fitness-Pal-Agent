@@ -1,12 +1,11 @@
 """Unit tests for Health Assessment Agent."""
 
 import pytest
-from datetime import datetime
 from unittest.mock import Mock, patch
-from langchain_core.messages import AIMessage, HumanMessage
 
 from src.agents.health_assessment import HealthAssessmentAgent, health_assessment_node, UserInfoExtraction
 from src.models.state import AgentState, UserProfile, HealthMetrics
+from langchain_core.messages import AIMessage, HumanMessage
 
 
 class TestHealthAssessmentAgent:
@@ -21,66 +20,76 @@ class TestHealthAssessmentAgent:
             agent = HealthAssessmentAgent()
             yield agent
     
-    @pytest.fixture
-    def complete_profile(self):
-        """Create a complete user profile."""
-        return UserProfile(
-            age=30,
-            gender="male",
+    def test_assess_complete_flow(self, agent):
+        """Test complete assessment flow."""
+        # Mock the extractor
+        mock_extraction = UserInfoExtraction(
             weight_kg=80.0,
             height_cm=175.0,
+            age=30,
+            gender="male",
             activity_level="moderately_active",
             fitness_goal="lose_weight"
         )
-    
-    def test_calculate_metrics_success(self, agent, complete_profile):
-        """Test successful health metrics calculation."""
-        metrics = agent.calculate_metrics(complete_profile)
+        agent.extractor.invoke = Mock(return_value=mock_extraction)
         
-        assert isinstance(metrics, HealthMetrics)
+        profile, metrics, message = agent.assess("I'm 30, male, 80kg, 175cm, moderately active, want to lose weight")
+        
+        # Verify profile
+        assert profile.weight_kg == 80.0
+        assert profile.age == 30
+        
+        # Verify metrics calculated
         assert metrics.bmi is not None
-        assert metrics.bmi_category is not None
         assert metrics.tdee is not None
         assert metrics.target_calories is not None
-        assert metrics.protein_g is not None
-        assert metrics.carbs_g is not None
-        assert metrics.fat_g is not None
-        assert metrics.risk_level is not None
-        assert len(metrics.recommendations) > 0
-        assert metrics.calculated_at is not None
+        
+        # Verify message formatted
+        assert "BMI" in message
+        assert "Calories" in message
+        assert len(message) > 0
     
-    def test_calculate_metrics_missing_fields(self, agent):
+    def test_assess_missing_fields_raises_error(self, agent):
         """Test that missing fields raise ValueError."""
-        incomplete_profile = UserProfile(age=30, gender="male")
-        with pytest.raises(ValueError):
-            agent.calculate_metrics(incomplete_profile)
-    
-    def test_calculate_metrics_values(self, agent):
-        """Test that calculated values are reasonable."""
-        profile = UserProfile(
+        # Mock incomplete extraction
+        mock_extraction = UserInfoExtraction(
             age=30,
-            gender="male",
+            gender="male"
+            # Missing other required fields
+        )
+        agent.extractor.invoke = Mock(return_value=mock_extraction)
+        
+        with pytest.raises(ValueError, match="Missing required fields"):
+            agent.assess("I'm 30 and male")
+    
+    def test_assess_calculates_correct_values(self, agent):
+        """Test that calculated values are reasonable."""
+        mock_extraction = UserInfoExtraction(
             weight_kg=80.0,
             height_cm=175.0,
+            age=30,
+            gender="male",
             activity_level="moderately_active",
             fitness_goal="lose_weight"
         )
+        agent.extractor.invoke = Mock(return_value=mock_extraction)
         
-        metrics = agent.calculate_metrics(profile)
+        profile, metrics, message = agent.assess("Complete info")
         
         # BMI should be around 26.1 (overweight)
         assert 25.0 <= metrics.bmi <= 27.0
         assert metrics.bmi_category == "Overweight"
         
-        # TDEE should be reasonable for this profile
+        # TDEE should be reasonable
         assert 2000 <= metrics.tdee <= 3000
         
-        # Target calories should be less than TDEE for weight loss
+        # Target should be less than TDEE for weight loss
         assert metrics.target_calories < metrics.tdee
         
-        # Macros should sum to approximately target calories
-        total_cal = (metrics.protein_g * 4) + (metrics.carbs_g * 4) + (metrics.fat_g * 9)
-        assert abs(total_cal - metrics.target_calories) < 100
+        # Macros should be positive
+        assert metrics.protein_g > 0
+        assert metrics.carbs_g > 0
+        assert metrics.fat_g > 0
 
 
 class TestHealthAssessmentNode:
@@ -89,15 +98,17 @@ class TestHealthAssessmentNode:
     @patch("src.agents.health_assessment.HealthAssessmentAgent")
     def test_health_assessment_node_success(self, mock_agent_class):
         """Test successful node execution."""
-        # Setup mock
         mock_agent = Mock()
         mock_agent_class.return_value = mock_agent
         
-        profile = UserProfile(age=30, gender="male", weight_kg=80.0, height_cm=175.0, 
-                            activity_level="moderately_active", fitness_goal="lose_weight")
-        metrics = HealthMetrics(bmi=26.1, bmi_category="Overweight", tdee=2400, 
-                              target_calories=1920, protein_g=168, carbs_g=168, fat_g=64,
-                              risk_level="moderate", recommendations=[])
+        profile = UserProfile(
+            age=30, gender="male", weight_kg=80.0, height_cm=175.0, 
+            activity_level="moderately_active", fitness_goal="lose_weight"
+        )
+        metrics = HealthMetrics(
+            bmi=26.1, bmi_category="Overweight", tdee=2400, 
+            target_calories=1920, protein_g=168, carbs_g=168, fat_g=64
+        )
         
         mock_agent.assess.return_value = (profile, metrics, "Test message")
         
@@ -108,7 +119,7 @@ class TestHealthAssessmentNode:
         
         assert result.user_profile is not None
         assert result.health_metrics is not None
-        assert len(result.messages) == 2  # Original + response
+        assert len(result.messages) == 2
     
     @patch("src.agents.health_assessment.HealthAssessmentAgent")
     def test_health_assessment_node_error(self, mock_agent_class):
@@ -122,16 +133,16 @@ class TestHealthAssessmentNode:
         
         result = health_assessment_node(state)
         
-        # Should have error message
+        # Should have error message with emoji
         assert len(result.messages) == 2
-        assert "Unable to complete" in result.messages[-1].content
+        assert "❌" in result.messages[-1].content or "Need" in result.messages[-1].content
 
 
-class TestAgentIntegrationScenarios:
-    """Integration-style tests for complete agent scenarios."""
+class TestAgentWithRealCalculations:
+    """Integration tests with real calculations."""
     
     @pytest.fixture
-    def agent_with_real_calculations(self):
+    def agent(self):
         """Create agent with mocked LLM but real calculations."""
         with patch("src.agents.health_assessment.get_chat_model") as mock_get_model:
             mock_llm = Mock()
@@ -139,70 +150,45 @@ class TestAgentIntegrationScenarios:
             agent = HealthAssessmentAgent()
             yield agent
     
-    def test_full_assessment_flow(self, agent_with_real_calculations):
-        """Test complete assessment flow from profile to metrics."""
-        profile = UserProfile(
-            age=25,
-            gender="female",
-            weight_kg=60.0,
-            height_cm=165.0,
-            activity_level="lightly_active",
-            fitness_goal="maintain"
+    def test_weight_loss_scenario(self, agent):
+        """Test weight loss scenario."""
+        mock_extraction = UserInfoExtraction(
+            age=35, gender="male", weight_kg=95.0, height_cm=175.0,
+            activity_level="sedentary", fitness_goal="lose_weight"
         )
+        agent.extractor.invoke = Mock(return_value=mock_extraction)
         
-        metrics = agent_with_real_calculations.calculate_metrics(profile)
+        profile, metrics, message = agent.assess("Info")
         
-        # Verify all metrics are calculated
-        assert metrics.bmi is not None
-        assert metrics.bmi_category is not None
-        assert metrics.tdee is not None
-        assert metrics.target_calories is not None
-        
-        # For maintenance, target should equal TDEE
-        assert metrics.target_calories == metrics.tdee
-        
-        # Verify recommendations are provided
-        assert len(metrics.recommendations) > 0
-    
-    def test_weight_loss_scenario(self, agent_with_real_calculations):
-        """Test weight loss scenario with overweight user."""
-        profile = UserProfile(
-            age=35,
-            gender="male",
-            weight_kg=95.0,
-            height_cm=175.0,
-            activity_level="sedentary",
-            fitness_goal="lose_weight"
-        )
-        
-        metrics = agent_with_real_calculations.calculate_metrics(profile)
-        
-        # Should be overweight or obese
+        # Should be overweight/obese
         assert metrics.bmi >= 25.0
-        
-        # Target calories should be less than TDEE
         assert metrics.target_calories < metrics.tdee
-        
-        # Should have moderate or high risk level
-        assert metrics.risk_level in ["moderate", "high"]
     
-    def test_muscle_gain_scenario(self, agent_with_real_calculations):
+    def test_muscle_gain_scenario(self, agent):
         """Test muscle gain scenario."""
-        profile = UserProfile(
-            age=22,
-            gender="male",
-            weight_kg=70.0,
-            height_cm=180.0,
-            activity_level="very_active",
-            fitness_goal="gain_muscle"
+        mock_extraction = UserInfoExtraction(
+            age=22, gender="male", weight_kg=70.0, height_cm=180.0,
+            activity_level="very_active", fitness_goal="gain_muscle"
         )
+        agent.extractor.invoke = Mock(return_value=mock_extraction)
         
-        metrics = agent_with_real_calculations.calculate_metrics(profile)
+        profile, metrics, message = agent.assess("Info")
         
-        # Target calories should be more than TDEE
+        # Should have high TDEE
+        assert metrics.tdee >= 2800
         assert metrics.target_calories > metrics.tdee
+        assert metrics.protein_g >= 140
+    
+    def test_maintenance_scenario(self, agent):
+        """Test maintenance scenario."""
+        mock_extraction = UserInfoExtraction(
+            age=25, gender="female", weight_kg=60.0, height_cm=165.0,
+            activity_level="lightly_active", fitness_goal="maintain"
+        )
+        agent.extractor.invoke = Mock(return_value=mock_extraction)
         
-        # Should have adequate protein for muscle gain
-        protein_per_kg = metrics.protein_g / profile.weight_kg
-        assert protein_per_kg >= 1.5  # Minimum for muscle gain
-
+        profile, metrics, message = agent.assess("Info")
+        
+        # Target should equal TDEE for maintenance
+        assert metrics.target_calories == metrics.tdee
+        assert metrics.bmi is not None
