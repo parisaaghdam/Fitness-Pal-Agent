@@ -24,8 +24,9 @@ def simulate_conversation():
     print("=" * 70)
     print("🥗 CONVERSATIONAL NUTRITION COACH DEMONSTRATION")
     print("=" * 70)
-    print("\nThis demonstrates the new conversational flow where the agent asks")
-    print("targeted questions about your dietary preferences before creating a meal plan.\n")
+    print("\nThis demonstrates the conversational flow where the agent asks targeted")
+    print("questions about ALL three macronutrient categories (protein, carbs, and fats)")
+    print("before creating a personalized meal plan.\n")
     
     # Create initial state with health metrics
     state = AgentState(
@@ -50,7 +51,7 @@ def simulate_conversation():
         messages=[]
     )
     
-    # Simulate a multi-turn conversation
+    # Simulate a multi-turn conversation covering all three macronutrient categories
     conversation_turns = [
         # Turn 1: User requests meal plan (triggers greeting)
         "I'd like a personalized meal plan",
@@ -58,10 +59,16 @@ def simulate_conversation():
         # Turn 2: User responds about protein preferences
         "I love chicken breast and eggs, and I eat fish occasionally. I'm not a fan of red meat or pork.",
         
-        # Turn 3: User provides frequency information
-        "I eat chicken and eggs almost daily, maybe 5-6 times a week. Fish I have maybe twice a week.",
+        # Turn 3: User responds about carbohydrate preferences
+        "For carbs, I really like brown rice, sweet potatoes, and oats. I prefer whole grains over white bread or pasta.",
         
-        # Turn 4: User mentions dislikes and restrictions
+        # Turn 4: User responds about fat preferences
+        "I use olive oil for cooking and love avocados and almonds. I'm not a big fan of butter.",
+        
+        # Turn 5: User provides frequency information
+        "I eat chicken and eggs almost daily. Rice and sweet potatoes I have about 4-5 times a week. Avocados and nuts daily.",
+        
+        # Turn 6: User mentions dislikes and restrictions
         "I avoid dairy because it bothers my stomach. I also don't like mushrooms or olives. No other restrictions though!"
     ]
     
@@ -110,8 +117,10 @@ def simulate_conversation():
     print(f"{'=' * 70}\n")
     print("Key Features Demonstrated:")
     print("  ✓ Greeting and engagement")
-    print("  ✓ Targeted protein preference questions")
-    print("  ✓ Frequency of consumption tracking")
+    print("  ✓ Protein preference questions")
+    print("  ✓ Carbohydrate preference questions")
+    print("  ✓ Fat preference questions")
+    print("  ✓ Frequency of consumption tracking (all macros)")
     print("  ✓ Dislikes and restrictions gathering")
     print("  ✓ Personalized meal plan generation")
     print("  ✓ Conversational, friendly tone throughout\n")

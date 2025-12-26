@@ -10,10 +10,21 @@ from src.utils.llm_provider import get_chat_model
 
 
 class DietaryPreferences(BaseModel):
-    """Tracks gathered dietary preference information."""
+    """Tracks gathered dietary preference information across all macronutrient categories."""
     
+    # Protein preferences
     protein_preferences: list[str] = Field(default_factory=list, description="Preferred protein sources")
     protein_frequency: dict[str, str] = Field(default_factory=dict, description="How often each protein is consumed")
+    
+    # Carbohydrate preferences
+    carb_preferences: list[str] = Field(default_factory=list, description="Preferred carbohydrate sources")
+    carb_frequency: dict[str, str] = Field(default_factory=dict, description="How often each carb is consumed")
+    
+    # Fat preferences
+    fat_preferences: list[str] = Field(default_factory=list, description="Preferred fat sources")
+    fat_frequency: dict[str, str] = Field(default_factory=dict, description="How often each fat is consumed")
+    
+    # General preferences
     dislikes: list[str] = Field(default_factory=list, description="Foods the user dislikes or avoids")
     restrictions: list[str] = Field(default_factory=list, description="Dietary restrictions")
     other_preferences: list[str] = Field(default_factory=list, description="Other food preferences")
@@ -22,26 +33,44 @@ class DietaryPreferences(BaseModel):
     def is_complete(self) -> bool:
         """Check if we have enough information to generate a meal plan."""
         return (
-            self.questions_asked >= 3 and
+            self.questions_asked >= 5 and  # Increased from 3 to cover all macros
             len(self.protein_preferences) > 0 and
-            (len(self.restrictions) > 0 or len(self.dislikes) > 0 or len(self.other_preferences) > 0)
+            len(self.carb_preferences) > 0 and
+            len(self.fat_preferences) > 0
         )
     
     def to_context_string(self) -> str:
         """Convert preferences to a string for meal plan generation."""
         parts = []
         
+        # Protein preferences
         if self.protein_preferences:
-            parts.append(f"Preferred proteins: {', '.join(self.protein_preferences)}")
+            parts.append(f"**Protein Preferences:** {', '.join(self.protein_preferences)}")
         if self.protein_frequency:
             freq_str = ", ".join([f"{k} ({v})" for k, v in self.protein_frequency.items()])
-            parts.append(f"Protein frequency: {freq_str}")
+            parts.append(f"  - Protein frequency: {freq_str}")
+        
+        # Carbohydrate preferences
+        if self.carb_preferences:
+            parts.append(f"**Carbohydrate Preferences:** {', '.join(self.carb_preferences)}")
+        if self.carb_frequency:
+            freq_str = ", ".join([f"{k} ({v})" for k, v in self.carb_frequency.items()])
+            parts.append(f"  - Carb frequency: {freq_str}")
+        
+        # Fat preferences
+        if self.fat_preferences:
+            parts.append(f"**Fat Preferences:** {', '.join(self.fat_preferences)}")
+        if self.fat_frequency:
+            freq_str = ", ".join([f"{k} ({v})" for k, v in self.fat_frequency.items()])
+            parts.append(f"  - Fat frequency: {freq_str}")
+        
+        # General preferences
         if self.dislikes:
-            parts.append(f"Dislikes/Avoids: {', '.join(self.dislikes)}")
+            parts.append(f"**Dislikes/Avoids:** {', '.join(self.dislikes)}")
         if self.restrictions:
-            parts.append(f"Dietary restrictions: {', '.join(self.restrictions)}")
+            parts.append(f"**Dietary Restrictions:** {', '.join(self.restrictions)}")
         if self.other_preferences:
-            parts.append(f"Other preferences: {', '.join(self.other_preferences)}")
+            parts.append(f"**Other Preferences:** {', '.join(self.other_preferences)}")
         
         return "\n".join(parts) if parts else "No specific preferences provided"
 
@@ -93,14 +122,17 @@ class NutritionPlanningAgent:
         system_prompt = """You are a friendly, proactive nutrition coach gathering dietary preferences.
 
 Your goal is to ask clear, specific, and targeted questions to understand the user's food preferences 
-before creating a personalized meal plan.
+across ALL three macronutrient categories before creating a personalized meal plan.
 
-PRIORITIES:
-1. **Protein sources** are the most important - ask about specific options (red meat, chicken breast, 
-   eggs, fish/seafood, dairy, plant-based proteins like tofu, beans, lentils)
-2. Ask about **frequency** of consumption for proteins they like
-3. Ask about **dislikes** and foods they avoid
-4. Ask about any **dietary restrictions** or preferences
+PRIORITIES (Ask in this order):
+1. **Protein sources** - Ask about specific options (red meat, chicken breast, eggs, fish/seafood, 
+   dairy like Greek yogurt, plant-based proteins like tofu, beans, lentils, tempeh)
+2. **Carbohydrate sources** - Ask about specific options (rice, pasta, bread, quinoa, oats, potatoes, 
+   sweet potatoes, fruits, whole grains vs refined grains)
+3. **Fat sources** - Ask about specific options (olive oil, butter, avocado, nuts, seeds, coconut oil,
+   fatty fish, cheese, nut butters)
+4. Ask about **frequency** of consumption for each category
+5. Ask about **dislikes** and foods they avoid
 
 QUESTION GUIDELINES:
 - Ask ONE specific question at a time
@@ -108,22 +140,32 @@ QUESTION GUIDELINES:
 - Adapt follow-up questions based on previous answers
 - Use specific food examples rather than generic categories
 - Show enthusiasm and genuine interest
+- Cover ALL three macronutrient categories (protein, carbs, fats)
 
 Current status: {questions_asked} questions asked so far.
 
 What we know:
 - Protein preferences: {proteins}
-- Protein frequency: {frequency}
+- Protein frequency: {protein_freq}
+- Carb preferences: {carbs}
+- Carb frequency: {carb_freq}
+- Fat preferences: {fats}
+- Fat frequency: {fat_freq}
 - Dislikes: {dislikes}
 - Restrictions: {restrictions}
 - Other preferences: {other}
 
-Generate your next question based on what we still need to learn."""
+Generate your next question based on what we still need to learn. Prioritize asking about any 
+macronutrient category we don't have information for yet."""
 
         context = system_prompt.format(
             questions_asked=preferences.questions_asked,
             proteins=", ".join(preferences.protein_preferences) if preferences.protein_preferences else "None yet",
-            frequency=str(preferences.protein_frequency) if preferences.protein_frequency else "None yet",
+            protein_freq=str(preferences.protein_frequency) if preferences.protein_frequency else "None yet",
+            carbs=", ".join(preferences.carb_preferences) if preferences.carb_preferences else "None yet",
+            carb_freq=str(preferences.carb_frequency) if preferences.carb_frequency else "None yet",
+            fats=", ".join(preferences.fat_preferences) if preferences.fat_preferences else "None yet",
+            fat_freq=str(preferences.fat_frequency) if preferences.fat_frequency else "None yet",
             dislikes=", ".join(preferences.dislikes) if preferences.dislikes else "None yet",
             restrictions=", ".join(preferences.restrictions) if preferences.restrictions else "None yet",
             other=", ".join(preferences.other_preferences) if preferences.other_preferences else "None yet"
@@ -152,15 +194,21 @@ Generate your next question based on what we still need to learn."""
         system_prompt = """You are analyzing a user's response about their dietary preferences.
 
 Extract the following information from their message:
-- Protein preferences mentioned (e.g., chicken, beef, eggs, fish, tofu, beans)
+- Protein preferences mentioned (e.g., chicken, beef, eggs, fish, tofu, beans, Greek yogurt)
+- Carbohydrate preferences mentioned (e.g., rice, pasta, bread, quinoa, oats, potatoes, sweet potatoes, fruits)
+- Fat preferences mentioned (e.g., olive oil, butter, avocado, nuts, seeds, coconut oil, nut butters)
 - Frequency of consumption if mentioned (e.g., "daily", "3 times a week", "occasionally")
 - Foods they dislike or avoid
 - Dietary restrictions (e.g., vegetarian, vegan, gluten-free, dairy-free, halal, kosher)
 - Any other food preferences
 
 Respond in a structured way:
-PROTEINS: [list any proteins mentioned]
-FREQUENCY: [protein: frequency pairs if mentioned]
+PROTEINS: [list any protein sources mentioned]
+PROTEIN_FREQUENCY: [protein: frequency pairs if mentioned]
+CARBS: [list any carbohydrate sources mentioned]
+CARB_FREQUENCY: [carb: frequency pairs if mentioned]
+FATS: [list any fat sources mentioned]
+FAT_FREQUENCY: [fat: frequency pairs if mentioned]
 DISLIKES: [list foods they dislike or avoid]
 RESTRICTIONS: [list dietary restrictions]
 OTHER: [other preferences or notes]
@@ -179,6 +227,8 @@ If nothing is mentioned for a category, write "None" for that category."""
         lines = parsed.split('\n')
         for line in lines:
             line = line.strip()
+            
+            # Protein preferences
             if line.startswith('PROTEINS:'):
                 proteins_text = line.replace('PROTEINS:', '').strip()
                 if proteins_text.lower() != 'none':
@@ -186,8 +236,8 @@ If nothing is mentioned for a category, write "None" for that category."""
                     preferences.protein_preferences.extend(new_proteins)
                     preferences.protein_preferences = list(set(preferences.protein_preferences))  # Remove duplicates
             
-            elif line.startswith('FREQUENCY:'):
-                freq_text = line.replace('FREQUENCY:', '').strip()
+            elif line.startswith('PROTEIN_FREQUENCY:'):
+                freq_text = line.replace('PROTEIN_FREQUENCY:', '').strip()
                 if freq_text.lower() != 'none':
                     # Parse "protein: frequency" pairs
                     pairs = freq_text.split(',')
@@ -196,6 +246,43 @@ If nothing is mentioned for a category, write "None" for that category."""
                             protein, freq = pair.split(':', 1)
                             preferences.protein_frequency[protein.strip()] = freq.strip()
             
+            # Carbohydrate preferences
+            elif line.startswith('CARBS:'):
+                carbs_text = line.replace('CARBS:', '').strip()
+                if carbs_text.lower() != 'none':
+                    new_carbs = [c.strip() for c in carbs_text.split(',') if c.strip()]
+                    preferences.carb_preferences.extend(new_carbs)
+                    preferences.carb_preferences = list(set(preferences.carb_preferences))
+            
+            elif line.startswith('CARB_FREQUENCY:'):
+                freq_text = line.replace('CARB_FREQUENCY:', '').strip()
+                if freq_text.lower() != 'none':
+                    # Parse "carb: frequency" pairs
+                    pairs = freq_text.split(',')
+                    for pair in pairs:
+                        if ':' in pair:
+                            carb, freq = pair.split(':', 1)
+                            preferences.carb_frequency[carb.strip()] = freq.strip()
+            
+            # Fat preferences
+            elif line.startswith('FATS:'):
+                fats_text = line.replace('FATS:', '').strip()
+                if fats_text.lower() != 'none':
+                    new_fats = [f.strip() for f in fats_text.split(',') if f.strip()]
+                    preferences.fat_preferences.extend(new_fats)
+                    preferences.fat_preferences = list(set(preferences.fat_preferences))
+            
+            elif line.startswith('FAT_FREQUENCY:'):
+                freq_text = line.replace('FAT_FREQUENCY:', '').strip()
+                if freq_text.lower() != 'none':
+                    # Parse "fat: frequency" pairs
+                    pairs = freq_text.split(',')
+                    for pair in pairs:
+                        if ':' in pair:
+                            fat, freq = pair.split(':', 1)
+                            preferences.fat_frequency[fat.strip()] = freq.strip()
+            
+            # General preferences
             elif line.startswith('DISLIKES:'):
                 dislikes_text = line.replace('DISLIKES:', '').strip()
                 if dislikes_text.lower() != 'none':
@@ -222,19 +309,19 @@ If nothing is mentioned for a category, write "None" for that category."""
         """Create an initial greeting message."""
         return """👋 Hi! I'm your nutrition coach, and I'm excited to create a personalized meal plan just for you!
 
-Before I design your meals, I'd love to learn about your food preferences to make sure everything I recommend is something you'll actually enjoy eating.
+Before I design your meals, I'd love to learn about your food preferences across all three macronutrient categories (proteins, carbohydrates, and fats) to make sure everything I recommend is something you'll actually enjoy eating.
 
-Let me start with the most important question: **What are your favorite protein sources?** 
+Let me start with **proteins** - **What are your favorite protein sources?** 
 
 For example, do you enjoy:
 - Red meat (beef, lamb, pork)?
 - Poultry (chicken breast, turkey, duck)?
 - Eggs?
 - Fish and seafood (salmon, tuna, shrimp)?
-- Dairy (Greek yogurt, cottage cheese)?
+- Dairy proteins (Greek yogurt, cottage cheese)?
 - Plant-based proteins (tofu, tempeh, beans, lentils)?
 
-Feel free to list as many as you like!"""
+Feel free to list as many as you like! After this, I'll ask about your carbohydrate and fat preferences too."""
     
     def plan_meals(
         self, 
