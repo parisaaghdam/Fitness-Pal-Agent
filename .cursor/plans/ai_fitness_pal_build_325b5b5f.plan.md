@@ -7,12 +7,12 @@ todos:
     status: completed
   - id: calculations-utils
     content: Implement BMI, TDEE, caloric calculations with unit tests
-    status: pending
+    status: completed
     dependencies:
       - foundation-setup
   - id: state-database
     content: Define state schemas and SQLAlchemy models with repositories
-    status: pending
+    status: completed
     dependencies:
       - foundation-setup
   - id: health-agent
@@ -23,7 +23,7 @@ todos:
       - state-database
   - id: nutrition-agent
     content: Build Nutrition Planning Agent with tests
-    status: pending
+    status: completed
     dependencies:
       - health-agent
   - id: recipe-agent

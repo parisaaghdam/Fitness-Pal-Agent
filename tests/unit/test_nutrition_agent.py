@@ -268,20 +268,12 @@ class TestNutritionPlanningAgent:
 class TestNutritionPlanningNode:
     """Test suite for nutrition_planning_node function."""
     
-    @patch('src.agents.nutrition_planning.get_chat_model')
     def test_node_success(
         self, 
-        mock_get_chat_model,
         sample_health_metrics,
-        sample_user_profile,
-        mock_daily_meal_plan
+        sample_user_profile
     ):
-        """Test successful node execution."""
-        # Setup mock
-        mock_llm = MagicMock()
-        mock_llm.invoke.return_value = mock_daily_meal_plan
-        mock_get_chat_model.return_value.with_structured_output.return_value = mock_llm
-        
+        """Test successful node execution - now starts conversation."""
         # Create state
         state = AgentState(
             user_profile=sample_user_profile,
@@ -289,16 +281,19 @@ class TestNutritionPlanningNode:
             messages=[HumanMessage(content="Create a meal plan")]
         )
         
-        # Execute node
+        # Execute node - should send greeting/first question
         result_state = nutrition_planning_node(state)
         
-        # Assertions
+        # Assertions - agent should start conversation, not immediately generate plan
         assert result_state.current_agent == "nutrition_planning"
-        assert result_state.meal_plan.total_calories > 0
         assert len(result_state.messages) == 2
         assert isinstance(result_state.messages[-1], AIMessage)
-        assert "Daily Meal Plan" in result_state.messages[-1].content
+        # Should ask about preferences (greeting message)
+        assert "nutrition coach" in result_state.messages[-1].content.lower() or \
+               "protein" in result_state.messages[-1].content.lower()
         assert result_state.updated_at is not None
+        # Meal plan should NOT be generated yet (conversation just started)
+        assert result_state.meal_plan.total_calories is None
     
     def test_node_missing_health_metrics(self, sample_user_profile):
         """Test node execution with missing health metrics."""
@@ -318,16 +313,16 @@ class TestNutritionPlanningNode:
         assert isinstance(result_state.messages[-1], AIMessage)
         assert "Health assessment required" in result_state.messages[-1].content
     
-    @patch('src.agents.nutrition_planning.NutritionPlanningAgent.plan_meals')
+    @patch('src.agents.nutrition_planning.NutritionPlanningAgent.create_greeting')
     def test_node_error_handling(
         self,
-        mock_plan_meals,
+        mock_create_greeting,
         sample_health_metrics,
         sample_user_profile
     ):
         """Test node error handling."""
         # Setup mock to raise exception
-        mock_plan_meals.side_effect = Exception("Test error")
+        mock_create_greeting.side_effect = Exception("Test error")
         
         # Create state
         state = AgentState(
@@ -342,7 +337,7 @@ class TestNutritionPlanningNode:
         # Assertions
         assert len(result_state.messages) == 2
         assert isinstance(result_state.messages[-1], AIMessage)
-        assert "Error creating meal plan" in result_state.messages[-1].content
+        assert "Error in nutrition planning" in result_state.messages[-1].content
 
 
 class TestEdgeCases:
