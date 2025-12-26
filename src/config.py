@@ -16,68 +16,68 @@ class Settings(BaseSettings):
     )
     
     # LLM Configuration
-    llm_provider: Literal["claude", "openai"] = Field(
+    LLM_PROVIDER: Literal["claude", "openai"] = Field(
         default="claude",
         description="LLM provider to use (claude or openai)"
     )
-    anthropic_api_key: str | None = Field(
+    ANTHROPIC_API_KEY: str | None = Field(
         default=None,
         description="Anthropic API key for Claude"
     )
-    openai_api_key: str | None = Field(
+    OPENAI_API_KEY: str | None = Field(
         default=None,
         description="OpenAI API key for GPT-4"
     )
     
     # Model Configuration
-    claude_model: str = Field(
+    CLAUDE_MODEL: str = Field(
         default="claude-3-5-sonnet-20241022",
         description="Claude model version to use"
     )
-    openai_model: str = Field(
+    OPENAI_MODEL: str = Field(
         default="gpt-4",
         description="OpenAI model version to use"
     )
     
     # Database Configuration
-    database_url: str = Field(
+    DATABASE_URL: str = Field(
         default="sqlite:///./fitness_pal.db",
         description="Database connection URL"
     )
     
     # API Configuration
-    api_host: str = Field(
+    API_HOST: str = Field(
         default="0.0.0.0",
         description="API server host"
     )
-    api_port: int = Field(
+    API_PORT: int = Field(
         default=8000,
         description="API server port"
     )
-    debug: bool = Field(
+    DEBUG: bool = Field(
         default=True,
         description="Enable debug mode"
     )
     
     # Application Settings
-    min_calorie_floor: int = Field(
+    MIN_CALORIE_FLOOR: int = Field(
         default=1200,
         description="Minimum daily calorie intake for safety"
     )
-    max_calorie_deficit: int = Field(
+    MAX_CALORIE_DEFICIT: int = Field(
         default=1000,
         description="Maximum daily calorie deficit for safety"
     )
-    max_calorie_surplus: int = Field(
+    MAX_CALORIE_SURPLUS: int = Field(
         default=500,
         description="Maximum daily calorie surplus for safety"
     )
     
     def validate_llm_config(self) -> None:
         """Validate that required API key is present for selected provider."""
-        if self.llm_provider == "claude" and not self.anthropic_api_key:
+        if self.LLM_PROVIDER == "claude" and not self.ANTHROPIC_API_KEY:
             raise ValueError("ANTHROPIC_API_KEY is required when using Claude")
-        if self.llm_provider == "openai" and not self.openai_api_key:
+        if self.LLM_PROVIDER == "openai" and not self.OPENAI_API_KEY:
             raise ValueError("OPENAI_API_KEY is required when using OpenAI")
 
 
@@ -89,6 +89,6 @@ try:
     settings.validate_llm_config()
 except ValueError as e:
     # Only warn during development, don't crash
-    if settings.debug:
+    if settings.DEBUG:
         print(f"Warning: {e}")
 

@@ -20,22 +20,22 @@ def get_chat_model(temperature: float = 0.7) -> BaseChatModel:
     Raises:
         ValueError: If provider is not configured properly
     """
-    if settings.llm_provider == "claude":
-        if not settings.anthropic_api_key:
+    if settings.LLM_PROVIDER == "claude":
+        if not settings.ANTHROPIC_API_KEY:
             raise ValueError("ANTHROPIC_API_KEY not set")
         return ChatAnthropic(
-            model=settings.claude_model,
-            anthropic_api_key=settings.anthropic_api_key,
+            model=settings.CLAUDE_MODEL,
+            anthropic_api_key=settings.ANTHROPIC_API_KEY,
             temperature=temperature
         )
-    elif settings.llm_provider == "openai":
-        if not settings.openai_api_key:
+    elif settings.LLM_PROVIDER == "openai":
+        if not settings.OPENAI_API_KEY:
             raise ValueError("OPENAI_API_KEY not set")
         return ChatOpenAI(
-            model=settings.openai_model,
-            openai_api_key=settings.openai_api_key,
+            model=settings.OPENAI_MODEL,
+            openai_api_key=settings.OPENAI_API_KEY,
             temperature=temperature
         )
     else:
-        raise ValueError(f"Unknown LLM provider: {settings.llm_provider}")
+        raise ValueError(f"Unknown LLM provider: {settings.LLM_PROVIDER}")
 
